@@ -9,6 +9,7 @@ export default function RootLayout() {
       <Stack.Screen name="typeOfUser" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)/SignIn" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)/SignUp" options={{ headerShown: false }} />
+      <Stack.Screen name="AddPatient" options={{ headerShown: false }} />
 
       {/* Tabs Navigator */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

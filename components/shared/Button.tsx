@@ -5,21 +5,24 @@ import {
   TouchableOpacity,
   StyleSheet,
   GestureResponderEvent,
+  ActivityIndicator ,
 } from "react-native";
 
 type ButtonProps = {
   text: string;
   onPress: (event: GestureResponderEvent) => void; // Explicitly typing the event
+  disabled?: boolean;
 };
 
-const Button: React.FC<ButtonProps> = ({ text, onPress }) => {
+const Button: React.FC<ButtonProps> = ({ text, onPress,disabled = false }) => {
   return (
     <TouchableOpacity
       style={styles.button}
       onPress={onPress}
+      disabled={disabled}
       activeOpacity={0.8}
     >
-      <Text style={styles.text}>{text}</Text>
+       {disabled ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.text}>{text}</Text>}
     </TouchableOpacity>
   );
 };
@@ -44,6 +47,9 @@ const styles = StyleSheet.create({
     color: "#fff",
     textAlign: "center",
     letterSpacing: 0.8,
+  },
+  disabledButton: {
+    backgroundColor: "#9CA3AF", // Gray when disabled
   },
 });
 
