@@ -2,7 +2,6 @@ import React from "react";
 import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
 
 const Profile: React.FC = () => {
-  // Sample user data (Replace with actual API/user context)
   const user = {
     name: "Dr. John Doe",
     userId: "123456789XYZ",
@@ -39,36 +38,42 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    borderWidth: 4,
+    borderColor: "#429D7E",
     marginBottom: 20,
   },
   userName: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: "bold",
-    color: "#111827",
+    color: "#222",
     marginBottom: 10,
   },
   info: {
-    fontSize: 16,
-    color: "#374151",
-    marginBottom: 5,
+    fontSize: 17,
+    color: "#444",
+    marginBottom: 6,
   },
   button: {
-    width: "80%",
-    padding: 12,
-    backgroundColor: "#00796B",
-    borderRadius: 5,
+    width: "90%",
+    padding: 15,
+    backgroundColor: "#429D7E",
+    borderRadius: 10,
     alignItems: "center",
     marginTop: 15,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 5,
   },
   logoutButton: {
     backgroundColor: "#D32F2F",
   },
   buttonText: {
     color: "white",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "bold",
   },
 });

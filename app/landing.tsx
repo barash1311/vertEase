@@ -1,4 +1,3 @@
-// screens/LandingPage.tsx
 import React from "react";
 import { View, Text, Image, StyleSheet } from "react-native";
 import Button from "../components/shared/Button";
@@ -13,16 +12,22 @@ const LandingPage: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {/* Title */}
       <Text style={styles.title}>
-        Vertigo <Text style={styles.plus}>+</Text>
+        Vertigo<Text style={styles.plus}>+</Text>
       </Text>
+
+      {/* Illustration */}
       <Image
-        source={require("../assets/images/favicon.png")}
+        source={require("../assets/images/favicon.png")} // Replace with correct image
         style={styles.image}
       />
+
+      {/* Subtitle */}
       <Text style={styles.subtitle}>CONSULT SPECIALIST DOCTORS</Text>
       <Text style={styles.subtitle}>SECURELY | PRIVATELY</Text>
-      <Button text="Get Started" onPress={handleGetStarted} />
+
+      <Button text="Get Started →" onPress={handleGetStarted} />
     </View>
   );
 };
@@ -31,30 +36,33 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-evenly",
     padding: 20,
-    backgroundColor: "#E5E7EB", // Light gray background
+    backgroundColor: "#F8FAFC", // Light background
   },
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#10B981", // Tailwind green-500
-    marginBottom: 10,
+    color: "#10B981",
+    textAlign: "center",
   },
   plus: {
     color: "#10B981",
   },
   image: {
-    width: 200,
-    height: 200,
+    width: "90%",
+    height: 250,
     resizeMode: "contain",
-    marginVertical: 20,
   },
   subtitle: {
     fontSize: 16,
-    color: "#374151", // Tailwind gray-700
+    color: "#374151",
     textAlign: "center",
-    marginVertical: 2,
+    fontWeight: "500",
+    letterSpacing: 1,
+  },
+  button: {
+    width: "90%", // Make button full width
   },
 });
 

@@ -10,7 +10,6 @@ export default function TabLayout() {
         tabBarActiveTintColor: "#000",
         tabBarInactiveTintColor: "#ccc",
         headerShown: false,
-        
       }}
     >
       <Tabs.Screen

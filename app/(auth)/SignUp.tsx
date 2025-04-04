@@ -1,4 +1,3 @@
-// screens/SignUp.tsx
 import React, { useState } from "react";
 import {
   StyleSheet,
@@ -9,9 +8,10 @@ import {
   Image,
   TouchableOpacity,
 } from "react-native";
-import Button from "../../components/shared/Button";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { MaterialIcons } from "@expo/vector-icons";
+import Button from "../../components/shared/Button";
 
 export default function SignUp() {
   const router = useRouter();
@@ -21,13 +21,12 @@ export default function SignUp() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
 
   const handleSignUp = () => {
-    // Handle sign-up logic here
     console.log("Sign Up pressed");
   };
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
@@ -40,40 +39,49 @@ export default function SignUp() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Register with us</Text>
+      <Text style={styles.title}>Create an Account</Text>
       <Text style={styles.subHeader}>Your information is safe with us</Text>
-      <TouchableOpacity onPress={pickImage}>
+
+      {/* Profile Image Picker */}
+      <TouchableOpacity style={styles.imageContainer} onPress={pickImage}>
         {profileImage ? (
           <Image source={{ uri: profileImage }} style={styles.profileImage} />
         ) : (
           <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>Select Image</Text>
+            <MaterialIcons name="photo-camera" size={28} color="#9CA3AF" />
+            <Text style={styles.placeholderText}>Upload Photo</Text>
           </View>
         )}
       </TouchableOpacity>
+
+      {/* Input Fields */}
       <TextInput
         style={styles.input}
-        placeholder="Enter your full name"
+        placeholder="Full Name"
         value={fullName}
         onChangeText={setFullName}
       />
       <TextInput
         style={styles.input}
-        placeholder="Enter your email"
+        placeholder="Email Address"
         value={email}
         onChangeText={setEmail}
         keyboardType="email-address"
       />
       <TextInput
         style={styles.input}
-        placeholder="Enter your password"
+        placeholder="Password"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
       />
+
+      {/* Sign In Navigation */}
       <Pressable onPress={() => router.push("/(auth)/SignIn")}>
         <Text style={styles.signInText}>Already have an account? Sign In</Text>
       </Pressable>
+
+      {/* Sign Up Button */}
       <Button text="Sign Up" onPress={handleSignUp} />
     </View>
   );
@@ -85,24 +93,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
-    backgroundColor: "#F3F4F6", // Light gray background
+    backgroundColor: "#F9FAFB", // Light background
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "bold",
-    color: "#111827", // Tailwind gray-900
-    marginBottom: 10,
+    color: "#1F2937", // Dark gray
+    marginBottom: 5,
   },
   subHeader: {
-    fontSize: 14,
-    color: "#6B7280", // Tailwind gray-500
+    fontSize: 16,
+    color: "#6B7280", // Medium gray
+    marginBottom: 20,
+  },
+  imageContainer: {
     marginBottom: 20,
   },
   profileImage: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: "#429D7E", // Tailwind green-500
   },
   placeholder: {
     width: 100,
@@ -111,24 +123,34 @@ const styles = StyleSheet.create({
     backgroundColor: "#E5E7EB", // Light gray
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#D1D5DB", // Tailwind gray-300
   },
   placeholderText: {
-    color: "#9CA3AF", // Tailwind gray-400
+    fontSize: 12,
+    color: "#6B7280", // Tailwind gray-500
+    marginTop: 5,
   },
   input: {
     width: "90%",
-    height: 40,
+    height: 50,
     backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    paddingHorizontal: 10,
+    borderRadius: 10,
+    paddingHorizontal: 15,
     marginBottom: 15,
     borderColor: "#D1D5DB", // Tailwind gray-300
     borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
   },
   signInText: {
     fontSize: 14,
     color: "#3B82F6", // Tailwind blue-500
     marginBottom: 20,
+    textDecorationLine: "underline",
   },
 });
+
+

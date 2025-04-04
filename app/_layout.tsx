@@ -11,7 +11,7 @@ export default function RootLayout() {
       <Stack.Screen name="(auth)/SignUp" options={{ headerShown: false }} />
 
       {/* Tabs Navigator */}
-      
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
     </Stack>
   );
 }
