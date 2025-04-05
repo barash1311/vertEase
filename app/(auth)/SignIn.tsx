@@ -1,57 +1,122 @@
 import React, { useState } from "react";
-import { StyleSheet, Text, View, TextInput, Pressable } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  Pressable,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from "react-native";
 import { useRouter } from "expo-router";
 import Button from "../../components/shared/Button";
+import { useAuth } from "../../api/AuthContext";
 
 export default function SignIn() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  
+  const { signIn } = useAuth();
 
-  const handleSignIn = () => {
-    router.push("/(tabs)/Home");
+  const validateForm = () => {
+    if (!email.trim()) {
+      setError("Please enter your email address");
+      return false;
+    }
+    
+    if (!password) {
+      setError("Please enter your password");
+      return false;
+    }
+    
+    setError("");
+    return true;
+  };
+
+  const handleSignIn = async () => {
+    if (!validateForm()) return;
+    
+    setIsLoading(true);
+    
+    try {
+      await signIn(email, password);
+      console.log("Sign in successful");
+      // Navigation will be handled by ProtectedRoute component based on role
+    } catch (error: any) {
+      console.error("Sign in error:", error);
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = () => {
+    router.push("/(auth)/ResetPassword");
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Welcome Back!</Text>
-      <Text style={styles.subHeader}>Sign in to continue</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>Welcome Back!</Text>
+        <Text style={styles.subHeader}>Sign in to continue</Text>
 
-      {/* Input Fields */}
-      <TextInput
-        style={styles.input}
-        placeholder="Email Address"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
+        {/* Error Message */}
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      {/* Forgot Password */}
-      <Pressable onPress={() => console.log("Forgot Password pressed")}>
-        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-      </Pressable>
+        {/* Input Fields */}
+        <TextInput
+          style={styles.input}
+          placeholder="Email Address"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          editable={!isLoading}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          editable={!isLoading}
+        />
 
-      {/* Sign In Button */}
-      <Button text="Sign In" onPress={handleSignIn} />
+        {/* Forgot Password */}
+        <Pressable onPress={handleForgotPassword} disabled={isLoading}>
+          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+        </Pressable>
 
-      {/* Sign Up Navigation */}
-      <Pressable onPress={() => router.push("/(auth)/SignUp")}>
-        <Text style={styles.signUpText}>Don't have an account? Sign Up</Text>
-      </Pressable>
-    </View>
+        {/* Sign In Button */}
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#10B981" />
+            <Text style={styles.loadingText}>Signing in...</Text>
+          </View>
+        ) : (
+          <Button text="Sign In" onPress={handleSignIn} disabled={isLoading} />
+        )}
+
+        {/* Sign Up Navigation */}
+        <Pressable onPress={() => router.push("/typeOfUser")} disabled={isLoading}>
+          <Text style={styles.signUpText}>Don't have an account? Sign Up</Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -93,6 +158,20 @@ const styles = StyleSheet.create({
     color: "#3B82F6", // Tailwind blue-500
     marginTop: 20,
     textDecorationLine: "underline",
+  },
+  errorText: {
+    color: "#EF4444", // Red
+    marginBottom: 15,
+    textAlign: "center",
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    marginVertical: 15,
+  },
+  loadingText: {
+    marginTop: 10,
+    color: "#6B7280",
+    fontSize: 14,
   },
 });
 

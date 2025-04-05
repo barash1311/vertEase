@@ -1,5 +1,4 @@
-
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +10,10 @@ import {
   Platform,
 } from "react-native";
 import { Checkbox, RadioButton, Divider, ProgressBar } from "react-native-paper";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import { collection, addDoc } from "firebase/firestore";
+import { db } from "@/api/firebaseConfig"; // adjust the import per your config
 
 const colors = {
   primary: "#4db6ac",
@@ -27,10 +30,31 @@ const colors = {
 };
 
 const AddPatient: React.FC = () => {
+  const router = useRouter();
+  
+  // Update the authentication check in AddPatient.tsx
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      const userId = await AsyncStorage.getItem('userId');
+      if (!userId) {
+        alert("You must be logged in as a practitioner to add patients.");
+        router.replace("/(tabs)/Home");
+        return;
+      }
+      
+      // Store userId as practitionerId for consistency
+      await AsyncStorage.setItem('practitionerId', userId);
+    };
+    
+    checkAuthentication();
+  }, []);
+  
   const [step, setStep] = useState(1);
   const totalSteps = 10;
   
   const [formData, setFormData] = useState({
+    id: generatePatientId(),
+    name: "",
     patientId: "",
     age: "",
     sex: "",
@@ -60,6 +84,11 @@ const AddPatient: React.FC = () => {
     vertigo: "",
   });
 
+  // Generate a unique patient ID
+  function generatePatientId() {
+    return 'PT' + Math.floor(100000 + Math.random() * 900000);
+  }
+
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -87,10 +116,52 @@ const AddPatient: React.FC = () => {
   const nextStep = () => setStep((prev) => Math.min(prev + 1, totalSteps));
   const prevStep = () => setStep((prev) => Math.max(prev - 1, 1));
 
-  const handleSubmit = () => {
-    console.log("Form Data Submitted:", formData);
-    // Here you would typically send the data to your backend
-    alert("Patient data saved successfully!");
+  const handleSubmit = async () => {
+    try {
+      // Get current practitioner ID from AsyncStorage
+      const practitionerId = await AsyncStorage.getItem('practitionerId');
+      
+      if (!practitionerId) {
+        alert("Unable to identify current practitioner. Please login again.");
+        return;
+      }
+      
+      // Include practitionerId in the patient data
+      const patientData = {
+        ...formData,
+        practitionerId,
+        createdAt: new Date().toISOString(),
+      };
+      
+      // Save to Firebase Firestore
+      const docRef = await addDoc(collection(db, "patients"), patientData);
+      
+      // Also update AsyncStorage for local access
+      // First get existing patients
+      const existingPatientsJSON = await AsyncStorage.getItem('patients');
+      const existingPatients = existingPatientsJSON ? JSON.parse(existingPatientsJSON) : [];
+      
+      // Add new patient to the list with just the needed fields for the list view
+      const patientForList = {
+        id: formData.id,          // Keep this client-generated ID for backward compatibility
+        name: formData.name,
+        cause: formData.cause || "Unknown cause",
+        practitionerId,
+        firestoreId: docRef.id,   // Save the Firebase-generated ID
+      };
+      
+      // Save updated list back to AsyncStorage
+      await AsyncStorage.setItem('patients', JSON.stringify([...existingPatients, patientForList]));
+      
+      // Set a flag to indicate data change for other screens to detect
+      await AsyncStorage.setItem('patientsLastUpdated', new Date().toISOString());
+      
+      alert("Patient data saved successfully!");
+      router.replace("/(tabs)/Home");
+    } catch (error) {
+      console.error("Error saving patient data:", error);
+      alert("Failed to save patient data. Please try again.");
+    }
   };
 
   return (
@@ -122,9 +193,17 @@ const AddPatient: React.FC = () => {
               <Text style={styles.label}>Patient ID</Text>
               <TextInput
                 style={styles.input}
-                value={formData.patientId}
-                placeholder="Enter patient ID"
-                onChangeText={(text) => handleInputChange("patientId", text)}
+                value={formData.id}
+                placeholder="Auto-generated"
+                editable={false}
+              />
+              
+              <Text style={styles.label}>Patient Name</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.name}
+                placeholder="Enter patient name"
+                onChangeText={(text) => handleInputChange("name", text)}
               />
               
               <View style={styles.rowContainer}>
@@ -736,18 +815,27 @@ const AddPatient: React.FC = () => {
         {/* Navigation Buttons */}
         <View style={styles.buttonContainer}>
           {step > 1 && (
-            <TouchableOpacity onPress={prevStep} style={styles.navButton}>
+            <TouchableOpacity
+              style={styles.navButton}
+              onPress={prevStep}
+            >
               <Text style={styles.buttonText}>Previous</Text>
             </TouchableOpacity>
           )}
           
           {step < totalSteps ? (
-            <TouchableOpacity onPress={nextStep} style={styles.navButton}>
+            <TouchableOpacity
+              style={styles.mainButton}
+              onPress={nextStep}
+            >
               <Text style={styles.buttonText}>Next</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity onPress={handleSubmit} style={styles.mainButton}>
-              <Text style={styles.buttonText}>Save</Text>
+            <TouchableOpacity
+              style={styles.mainButton}
+              onPress={handleSubmit}
+            >
+              <Text style={styles.buttonText}>Submit</Text>
             </TouchableOpacity>
           )}
         </View>

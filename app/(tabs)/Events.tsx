@@ -11,26 +11,74 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { collection, query, where, getDocs, doc, deleteDoc } from "firebase/firestore";
+import { db } from "@/api/firebaseConfig";
+import { useAuth } from "../../api/AuthContext";
 
 const Events: React.FC = () => {
   const router = useRouter();
+  const { user } = useAuth();
   const [patients, setPatients] = useState<
-    { id: string; name: string; cause: string }[]
+    { id: string; name: string; cause: string; firestoreId?: string }[]
   >([]);
   const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
-    loadPatients();
-  }, []);
+    if (user?.uid) {
+      loadPatients();
+    }
+  }, [user]);
 
   const loadPatients = async () => {
-    const storedPatients = await AsyncStorage.getItem("patients");
-    if (storedPatients) {
-      setPatients(JSON.parse(storedPatients));
+    try {
+      // Get the current user's ID to use as practitionerId
+      const userId = user?.uid;
+      
+      if (!userId) {
+        console.log("No user ID found");
+        return;
+      }
+      
+      console.log("Loading patients for practitioner ID:", userId);
+      
+      // Query Firestore for patients with this practitioner ID
+      const q = query(collection(db, "patients"), where("practitionerId", "==", userId));
+      const querySnapshot = await getDocs(q);
+      
+      console.log("Found patients count:", querySnapshot.docs.length);
+      
+      const patientsList = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: data.id || doc.id,
+          name: data.name || "Unknown Name",
+          cause: data.cause || "Unknown cause",
+          firestoreId: doc.id,  // Store the Firebase document ID for deletion
+        };
+      });
+      
+      // Update state with the fetched patients
+      setPatients(patientsList);
+      
+      // Also update AsyncStorage for offline access
+      await AsyncStorage.setItem('patients', JSON.stringify(patientsList));
+    } catch (error) {
+      console.error("Error loading patients from Firestore:", error);
+      
+      // Fall back to AsyncStorage if Firestore fails
+      try {
+        const storedPatientsString = await AsyncStorage.getItem("patients");
+        if (storedPatientsString) {
+          setPatients(JSON.parse(storedPatientsString));
+        }
+      } catch (storageError) {
+        console.error("Failed to load patients from AsyncStorage:", storageError);
+      }
     }
   };
 
-  const deletePatient = async (id: string) => {
+  // Update the deletePatient function to trigger a refresh
+  const deletePatient = async (id: string, firestoreId?: string) => {
     Alert.alert(
       "Delete Patient",
       "Are you sure you want to delete this patient?",
@@ -42,19 +90,52 @@ const Events: React.FC = () => {
         {
           text: "Delete",
           onPress: async () => {
-            const updatedPatients = patients.filter(
-              (patient) => patient.id !== id
-            );
-            setPatients(updatedPatients);
-            await AsyncStorage.setItem(
-              "patients",
-              JSON.stringify(updatedPatients)
-            );
+            try {
+              // Delete from Firestore first
+              if (firestoreId) {
+                await deleteDoc(doc(db, "patients", firestoreId));
+                console.log("Patient deleted from Firestore:", firestoreId);
+              } else {
+                console.warn("No Firestore ID available for deletion");
+              }
+              
+              // Update local state and AsyncStorage
+              const updatedPatients = patients.filter(
+                (patient) => patient.id !== id
+              );
+              setPatients(updatedPatients);
+              await AsyncStorage.setItem(
+                "patients",
+                JSON.stringify(updatedPatients)
+              );
+              
+              // Also delete the detailed patient data from AsyncStorage
+              await AsyncStorage.removeItem(`patient-${id}`);
+              
+              // Set a flag to indicate data change for other screens to detect
+              await AsyncStorage.setItem('patientsLastUpdated', new Date().toISOString());
+              
+              Alert.alert("Success", "Patient deleted successfully");
+            } catch (error) {
+              console.error("Error deleting patient:", error);
+              Alert.alert("Error", "Failed to delete patient. Please try again.");
+            }
           },
           style: "destructive",
         },
       ]
     );
+  };
+
+  const goToAddPatient = () => {
+    if (user?.uid) {
+      // Store the current user ID as practitionerId for consistency
+      AsyncStorage.setItem('practitionerId', user.uid).then(() => {
+        router.push("/AddPatient");
+      });
+    } else {
+      Alert.alert("Error", "You must be logged in to add patients");
+    }
   };
 
   const filteredPatients = patients.filter((patient) =>
@@ -83,29 +164,43 @@ const Events: React.FC = () => {
       </View>
 
       {/* Patient List */}
-      <FlatList
-        data={filteredPatients}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.patientCard}>
-            <View style={styles.cardContent}>
-              <Text style={styles.patientName}>{item.name}</Text>
-              <Text style={styles.patientCause}>Cause: {item.cause}</Text>
-            </View>
+      {patients.length > 0 ? (
+        <FlatList
+          data={filteredPatients}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => deletePatient(item.id)}
+              style={styles.patientCard}
+              onPress={() => router.push(`/PatientDetail/${item.id}`)}
             >
-              <Ionicons name="trash" size={22} color="white" />
+              <View style={styles.cardContent}>
+                <Text style={styles.patientName}>{item.name}</Text>
+                <Text style={styles.patientCause}>Cause: {item.cause}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent triggering the parent onPress
+                  deletePatient(item.id, item.firestoreId);
+                }}
+              >
+                <Ionicons name="trash" size={22} color="white" />
+              </TouchableOpacity>
             </TouchableOpacity>
-          </View>
-        )}
-      />
+          )}
+        />
+      ) : (
+        <View style={styles.emptyState}>
+          <Ionicons name="person-outline" size={60} color="#ccc" />
+          <Text style={styles.emptyText}>No patients found</Text>
+          <Text style={styles.emptySubtext}>Add a new patient to get started</Text>
+        </View>
+      )}
 
       {/* Bottom Navigation Bar */}
       <TouchableOpacity
         style={styles.addButton}
-        onPress={() => router.push("/AddPatient")}
+        onPress={goToAddPatient}
       >
         <Text style={styles.addButtonText}>+ Add Patient</Text>
       </TouchableOpacity>
@@ -113,7 +208,7 @@ const Events: React.FC = () => {
   );
 };
 
-// Styles
+// Add to Styles
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: "#E5E5E5" },
   title: {
@@ -180,6 +275,23 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: "white",
     fontWeight: "bold",
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#666",
+    marginTop: 10,
+  },
+  emptySubtext: {
+    fontSize: 16,
+    color: "#888",
+    marginTop: 5,
   },
 });
 

@@ -1,9 +1,18 @@
 import React from "react";
 import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
+import { UserRole } from "../api/AuthContext";
 
 export default function TypeOfUser() {
   const router = useRouter();
+
+  const handleRoleSelect = (role: UserRole) => {
+    console.log("Selected role:", role); // Debug log
+    router.push({
+      pathname: "/(auth)/SignUp",
+      params: { role }
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -14,7 +23,7 @@ export default function TypeOfUser() {
 
       <TouchableOpacity
         style={[styles.button, styles.patientButton]}
-        onPress={() => router.push("/(auth)/SignUp")}
+        onPress={() => handleRoleSelect("patient")}
         activeOpacity={0.8} // Reduce opacity on press for feedback
       >
         <Text style={styles.buttonText}>Patient</Text>
@@ -22,7 +31,7 @@ export default function TypeOfUser() {
 
       <TouchableOpacity
         style={[styles.button, styles.practitionerButton]}
-        onPress={() => router.push("/(auth)/SignUp")}
+        onPress={() => handleRoleSelect("practitioner")}
         activeOpacity={0.8}
       >
         <Text style={styles.buttonText}>Practitioner</Text>
