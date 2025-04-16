@@ -8,11 +8,17 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
-import { Checkbox, RadioButton, Divider, ProgressBar } from "react-native-paper";
+import {
+  Checkbox,
+  RadioButton,
+  Divider,
+  ProgressBar,
+} from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
-import { collection, addDoc } from "firebase/firestore";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { collection, addDoc, doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/api/firebaseConfig"; // adjust the import per your config
 
 const colors = {
@@ -31,27 +37,53 @@ const colors = {
 
 const AddPatient: React.FC = () => {
   const router = useRouter();
-  
-  // Update the authentication check in AddPatient.tsx
+  const params = useLocalSearchParams();
+  const isEditing = params.isEditing === "true";
+  const patientId = params.patientId as string;
+
   useEffect(() => {
     const checkAuthentication = async () => {
-      const userId = await AsyncStorage.getItem('userId');
+      const userId = await AsyncStorage.getItem("userId");
       if (!userId) {
         alert("You must be logged in as a practitioner to add patients.");
         router.replace("/(tabs)/Home");
         return;
       }
-      
-      // Store userId as practitionerId for consistency
-      await AsyncStorage.setItem('practitionerId', userId);
+
+      await AsyncStorage.setItem("practitionerId", userId);
     };
-    
+
     checkAuthentication();
   }, []);
-  
+
+  useEffect(() => {
+    const loadPatientData = async () => {
+      if (isEditing && patientId) {
+        try {
+          const docRef = doc(db, "patients", patientId);
+          const docSnap = await getDoc(docRef);
+
+          if (docSnap.exists()) {
+            const patientData = docSnap.data();
+            setFormData((prev) => ({
+              ...prev,
+              ...patientData,
+              id: patientData.id,
+            }));
+          }
+        } catch (error) {
+          console.error("Error loading patient data:", error);
+          Alert.alert("Error", "Failed to load patient data");
+        }
+      }
+    };
+
+    loadPatientData();
+  }, [isEditing, patientId]);
+
   const [step, setStep] = useState(1);
   const totalSteps = 10;
-  
+
   const [formData, setFormData] = useState({
     id: generatePatientId(),
     name: "",
@@ -84,16 +116,19 @@ const AddPatient: React.FC = () => {
     vertigo: "",
   });
 
-  // Generate a unique patient ID
   function generatePatientId() {
-    return 'PT' + Math.floor(100000 + Math.random() * 900000);
+    return "PT" + Math.floor(100000 + Math.random() * 900000);
   }
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleNestedInputChange = (field: string, subField: string, value: string) => {
+  const handleNestedInputChange = (
+    field: string,
+    subField: string,
+    value: string
+  ) => {
     setFormData((prev) => ({
       ...prev,
       [field]: { ...prev[field], [subField]: value },
@@ -118,49 +153,44 @@ const AddPatient: React.FC = () => {
 
   const handleSubmit = async () => {
     try {
-      // Get current practitioner ID from AsyncStorage
-      const practitionerId = await AsyncStorage.getItem('practitionerId');
-      
+      const practitionerId = await AsyncStorage.getItem("practitionerId");
       if (!practitionerId) {
         alert("Unable to identify current practitioner. Please login again.");
         return;
       }
-      
-      // Include practitionerId in the patient data
+
       const patientData = {
         ...formData,
         practitionerId,
-        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
-      
-      // Save to Firebase Firestore
-      const docRef = await addDoc(collection(db, "patients"), patientData);
-      
-      // Also update AsyncStorage for local access
-      // First get existing patients
-      const existingPatientsJSON = await AsyncStorage.getItem('patients');
-      const existingPatients = existingPatientsJSON ? JSON.parse(existingPatientsJSON) : [];
-      
-      // Add new patient to the list with just the needed fields for the list view
-      const patientForList = {
-        id: formData.id,          // Keep this client-generated ID for backward compatibility
-        name: formData.name,
-        cause: formData.cause || "Unknown cause",
-        practitionerId,
-        firestoreId: docRef.id,   // Save the Firebase-generated ID
-      };
-      
-      // Save updated list back to AsyncStorage
-      await AsyncStorage.setItem('patients', JSON.stringify([...existingPatients, patientForList]));
-      
-      // Set a flag to indicate data change for other screens to detect
-      await AsyncStorage.setItem('patientsLastUpdated', new Date().toISOString());
-      
-      alert("Patient data saved successfully!");
-      router.replace("/(tabs)/Home");
+
+      if (isEditing && patientId) {
+        // Update existing patient
+        const patientRef = doc(db, "patients", patientId);
+        await updateDoc(patientRef, patientData);
+      } else {
+        // Add new patient
+        await addDoc(collection(db, "patients"), {
+          ...patientData,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      // After successful addition/update
+      await AsyncStorage.setItem(
+        "patientsLastUpdated",
+        new Date().toISOString()
+      );
+      Alert.alert("Success", "Patient saved successfully!", [
+        {
+          text: "OK",
+          onPress: () => router.back(),
+        },
+      ]);
     } catch (error) {
-      console.error("Error saving patient data:", error);
-      alert("Failed to save patient data. Please try again.");
+      console.error("Error:", error);
+      Alert.alert("Error", "Failed to save patient");
     }
   };
 
@@ -171,7 +201,9 @@ const AddPatient: React.FC = () => {
     >
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Add Patient</Text>
+          <Text style={styles.headerTitle}>
+            {isEditing ? "Edit Patient" : "Add Patient"}
+          </Text>
         </View>
 
         <View style={styles.progressContainer}>
@@ -197,7 +229,7 @@ const AddPatient: React.FC = () => {
                 placeholder="Auto-generated"
                 editable={false}
               />
-              
+
               <Text style={styles.label}>Patient Name</Text>
               <TextInput
                 style={styles.input}
@@ -205,7 +237,7 @@ const AddPatient: React.FC = () => {
                 placeholder="Enter patient name"
                 onChangeText={(text) => handleInputChange("name", text)}
               />
-              
+
               <View style={styles.rowContainer}>
                 <View style={styles.halfInput}>
                   <Text style={styles.label}>Age</Text>
@@ -217,7 +249,7 @@ const AddPatient: React.FC = () => {
                     onChangeText={(text) => handleInputChange("age", text)}
                   />
                 </View>
-                
+
                 <View style={styles.halfInput}>
                   <Text style={styles.label}>Sex</Text>
                   <View style={styles.dropdownStyle}>
@@ -237,7 +269,7 @@ const AddPatient: React.FC = () => {
                   </View>
                 </View>
               </View>
-              
+
               <Text style={styles.label}>Cause</Text>
               <TextInput
                 style={styles.input}
@@ -245,7 +277,7 @@ const AddPatient: React.FC = () => {
                 value={formData.cause}
                 onChangeText={(text) => handleInputChange("cause", text)}
               />
-              
+
               <Text style={styles.label}>Vertigo Description</Text>
               <TextInput
                 style={styles.textArea}
@@ -265,7 +297,7 @@ const AddPatient: React.FC = () => {
               <Text style={styles.label}>
                 Is your patient suffering from any of the following conditions?
               </Text>
-              
+
               {[
                 "Diabetes",
                 "Hypertension",
@@ -279,9 +311,13 @@ const AddPatient: React.FC = () => {
                 <View key={condition} style={styles.checkboxContainer}>
                   <Checkbox
                     status={
-                      formData.comorbidities.includes(condition) ? "checked" : "unchecked"
+                      formData.comorbidities.includes(condition)
+                        ? "checked"
+                        : "unchecked"
                     }
-                    onPress={() => handleCheckboxChange("comorbidities", condition)}
+                    onPress={() =>
+                      handleCheckboxChange("comorbidities", condition)
+                    }
                     color="#2D9F88"
                   />
                   <Text style={styles.checkboxText}>{condition}</Text>
@@ -294,7 +330,9 @@ const AddPatient: React.FC = () => {
           {step === 3 && (
             <>
               <Text style={styles.sectionTitle}>Vertigo Characteristics</Text>
-              <Text style={styles.label}>Was the onset of vertigo sudden or gradual?</Text>
+              <Text style={styles.label}>
+                Was the onset of vertigo sudden or gradual?
+              </Text>
               <RadioButton.Group
                 onValueChange={(value) => handleRadioChange("onset", value)}
                 value={formData.onset}
@@ -317,9 +355,11 @@ const AddPatient: React.FC = () => {
           {step === 4 && (
             <>
               <Text style={styles.sectionTitle}>Duration of Vertigo</Text>
-              <Text style={styles.label}>How long has the patient had vertigo?</Text>
+              <Text style={styles.label}>
+                How long has the patient had vertigo?
+              </Text>
               <Text style={styles.sublabel}>(Fill in appropriate fields)</Text>
-              
+
               <View style={styles.durationContainer}>
                 {["minutes", "hours", "days", "months", "years"].map((unit) => (
                   <View key={unit} style={styles.durationItem}>
@@ -346,10 +386,13 @@ const AddPatient: React.FC = () => {
             <>
               <Text style={styles.sectionTitle}>Type of Sensation</Text>
               <Text style={styles.label}>
-                Is the vertigo characterized by a spinning sensation or a back-and-forth motion?
+                Is the vertigo characterized by a spinning sensation or a
+                back-and-forth motion?
               </Text>
               <RadioButton.Group
-                onValueChange={(value) => handleRadioChange("vertigoSensation", value)}
+                onValueChange={(value) =>
+                  handleRadioChange("vertigoSensation", value)
+                }
                 value={formData.vertigoSensation}
               >
                 <View style={styles.radioContainer}>
@@ -374,7 +417,9 @@ const AddPatient: React.FC = () => {
                 Are the symptoms episodic or persistent?
               </Text>
               <RadioButton.Group
-                onValueChange={(value) => handleRadioChange("episodicOrPersistent", value)}
+                onValueChange={(value) =>
+                  handleRadioChange("episodicOrPersistent", value)
+                }
                 value={formData.episodicOrPersistent}
               >
                 <View style={styles.radioContainer}>
@@ -391,7 +436,9 @@ const AddPatient: React.FC = () => {
 
               {formData.episodicOrPersistent === "Episodic" && (
                 <>
-                  <Text style={styles.label}>How long does each episode last?</Text>
+                  <Text style={styles.label}>
+                    How long does each episode last?
+                  </Text>
                   <View style={styles.durationContainer}>
                     {["seconds", "minutes", "hours", "days"].map((unit) => (
                       <View key={unit} style={styles.durationItem}>
@@ -401,7 +448,11 @@ const AddPatient: React.FC = () => {
                           keyboardType="numeric"
                           value={formData.episodeDuration[unit]}
                           onChangeText={(text) =>
-                            handleNestedInputChange("episodeDuration", unit, text)
+                            handleNestedInputChange(
+                              "episodeDuration",
+                              unit,
+                              text
+                            )
                           }
                         />
                         <Text style={styles.durationLabel}>
@@ -415,13 +466,17 @@ const AddPatient: React.FC = () => {
                     Does the patient experience remission between episodes?
                   </Text>
                   <RadioButton.Group
-                    onValueChange={(value) => handleRadioChange("remission", value)}
+                    onValueChange={(value) =>
+                      handleRadioChange("remission", value)
+                    }
                     value={formData.remission}
                   >
                     <View style={styles.radioContainer}>
                       <View style={styles.radioButton}>
                         <RadioButton value="Partial" color="#2D9F88" />
-                        <Text style={styles.radioText}>Partial with reduced severity</Text>
+                        <Text style={styles.radioText}>
+                          Partial with reduced severity
+                        </Text>
                       </View>
                       <View style={styles.radioButton}>
                         <RadioButton value="Complete" color="#2D9F88" />
@@ -437,12 +492,14 @@ const AddPatient: React.FC = () => {
           {/* Step 7: Triggers */}
           {step === 7 && (
             <>
-              <Text style={styles.sectionTitle}>Triggers and Aggravating Factors</Text>
+              <Text style={styles.sectionTitle}>
+                Triggers and Aggravating Factors
+              </Text>
               <Text style={styles.label}>
                 What triggers or aggravates the vertigo?
               </Text>
               <Text style={styles.sublabel}>(Select all that apply)</Text>
-              
+
               {[
                 "Head movements",
                 "Changes in middle ear pressure (coughing, defecation)",
@@ -454,7 +511,9 @@ const AddPatient: React.FC = () => {
                 <View key={trigger} style={styles.checkboxContainer}>
                   <Checkbox
                     status={
-                      formData.triggers.includes(trigger) ? "checked" : "unchecked"
+                      formData.triggers.includes(trigger)
+                        ? "checked"
+                        : "unchecked"
                     }
                     onPress={() => handleCheckboxChange("triggers", trigger)}
                     color="#2D9F88"
@@ -469,7 +528,9 @@ const AddPatient: React.FC = () => {
                     Is vertigo triggered or aggravated by head movements?
                   </Text>
                   <RadioButton.Group
-                    onValueChange={(value) => handleRadioChange("headMovementEffect", value)}
+                    onValueChange={(value) =>
+                      handleRadioChange("headMovementEffect", value)
+                    }
                     value={formData.headMovementEffect}
                   >
                     <View style={styles.radioContainer}>
@@ -487,12 +548,15 @@ const AddPatient: React.FC = () => {
               )}
 
               <Divider style={styles.divider} />
-              
+
               <Text style={styles.label}>
-                Did the patient sustain head injury in any form in the recent past?
+                Did the patient sustain head injury in any form in the recent
+                past?
               </Text>
               <RadioButton.Group
-                onValueChange={(value) => handleRadioChange("headInjury", value)}
+                onValueChange={(value) =>
+                  handleRadioChange("headInjury", value)
+                }
                 value={formData.headInjury}
               >
                 <View style={styles.radioContainer}>
@@ -517,7 +581,7 @@ const AddPatient: React.FC = () => {
                 What other complaints are associated with vertigo?
               </Text>
               <Text style={styles.sublabel}>(Select all that apply)</Text>
-              
+
               {[
                 "Nausea",
                 "Vomiting",
@@ -534,7 +598,9 @@ const AddPatient: React.FC = () => {
                 <View key={symptom} style={styles.checkboxContainer}>
                   <Checkbox
                     status={
-                      formData.symptoms.includes(symptom) ? "checked" : "unchecked"
+                      formData.symptoms.includes(symptom)
+                        ? "checked"
+                        : "unchecked"
                     }
                     onPress={() => handleCheckboxChange("symptoms", symptom)}
                     color="#2D9F88"
@@ -556,9 +622,13 @@ const AddPatient: React.FC = () => {
                     <View key={symptom} style={styles.checkboxIndented}>
                       <Checkbox
                         status={
-                          formData.earSymptoms.includes(symptom) ? "checked" : "unchecked"
+                          formData.earSymptoms.includes(symptom)
+                            ? "checked"
+                            : "unchecked"
                         }
-                        onPress={() => handleCheckboxChange("earSymptoms", symptom)}
+                        onPress={() =>
+                          handleCheckboxChange("earSymptoms", symptom)
+                        }
                         color="#2D9F88"
                       />
                       <Text style={styles.checkboxText}>{symptom}</Text>
@@ -569,17 +639,29 @@ const AddPatient: React.FC = () => {
                     <>
                       <Text style={styles.labelIndented}>Hearing loss is:</Text>
                       <RadioButton.Group
-                        onValueChange={(value) => handleRadioChange("hearingLossSide", value)}
+                        onValueChange={(value) =>
+                          handleRadioChange("hearingLossSide", value)
+                        }
                         value={formData.hearingLossSide}
                       >
                         <View style={styles.radioIndented}>
                           <View style={styles.radioButton}>
-                            <RadioButton value="UnilateralRight" color="#2D9F88" />
-                            <Text style={styles.radioText}>Unilateral Right</Text>
+                            <RadioButton
+                              value="UnilateralRight"
+                              color="#2D9F88"
+                            />
+                            <Text style={styles.radioText}>
+                              Unilateral Right
+                            </Text>
                           </View>
                           <View style={styles.radioButton}>
-                            <RadioButton value="UnilateralLeft" color="#2D9F88" />
-                            <Text style={styles.radioText}>Unilateral Left</Text>
+                            <RadioButton
+                              value="UnilateralLeft"
+                              color="#2D9F88"
+                            />
+                            <Text style={styles.radioText}>
+                              Unilateral Left
+                            </Text>
                           </View>
                           <View style={styles.radioButton}>
                             <RadioButton value="Bilateral" color="#2D9F88" />
@@ -588,9 +670,13 @@ const AddPatient: React.FC = () => {
                         </View>
                       </RadioButton.Group>
 
-                      <Text style={styles.labelIndented}>Onset of hearing loss:</Text>
+                      <Text style={styles.labelIndented}>
+                        Onset of hearing loss:
+                      </Text>
                       <RadioButton.Group
-                        onValueChange={(value) => handleRadioChange("hearingLossOnset", value)}
+                        onValueChange={(value) =>
+                          handleRadioChange("hearingLossOnset", value)
+                        }
                         value={formData.hearingLossOnset}
                       >
                         <View style={styles.radioIndented}>
@@ -605,9 +691,13 @@ const AddPatient: React.FC = () => {
                         </View>
                       </RadioButton.Group>
 
-                      <Text style={styles.labelIndented}>Duration of hearing loss:</Text>
+                      <Text style={styles.labelIndented}>
+                        Duration of hearing loss:
+                      </Text>
                       <RadioButton.Group
-                        onValueChange={(value) => handleRadioChange("hearingLossDuration", value)}
+                        onValueChange={(value) =>
+                          handleRadioChange("hearingLossDuration", value)
+                        }
                         value={formData.hearingLossDuration}
                       >
                         <View style={styles.radioIndented}>
@@ -616,29 +706,47 @@ const AddPatient: React.FC = () => {
                             <Text style={styles.radioText}>Preexisting</Text>
                           </View>
                           <View style={styles.radioButton}>
-                            <RadioButton value="WithOrFollowing" color="#2D9F88" />
-                            <Text style={styles.radioText}>With or following vertigo</Text>
+                            <RadioButton
+                              value="WithOrFollowing"
+                              color="#2D9F88"
+                            />
+                            <Text style={styles.radioText}>
+                              With or following vertigo
+                            </Text>
                           </View>
                           <View style={styles.radioButton}>
                             <RadioButton value="Complete" color="#2D9F88" />
-                            <Text style={styles.radioText}>Complete hearing loss</Text>
+                            <Text style={styles.radioText}>
+                              Complete hearing loss
+                            </Text>
                           </View>
                           <View style={styles.radioButton}>
                             <RadioButton value="Fluctuating" color="#2D9F88" />
-                            <Text style={styles.radioText}>Fluctuating hearing loss</Text>
+                            <Text style={styles.radioText}>
+                              Fluctuating hearing loss
+                            </Text>
                           </View>
                         </View>
                       </RadioButton.Group>
 
-                      <Text style={styles.labelIndented}>Hearing loss progression:</Text>
+                      <Text style={styles.labelIndented}>
+                        Hearing loss progression:
+                      </Text>
                       <RadioButton.Group
-                        onValueChange={(value) => handleRadioChange("hearingLossProgression", value)}
+                        onValueChange={(value) =>
+                          handleRadioChange("hearingLossProgression", value)
+                        }
                         value={formData.hearingLossProgression}
                       >
                         <View style={styles.radioIndented}>
                           <View style={styles.radioButton}>
-                            <RadioButton value="NonProgressive" color="#2D9F88" />
-                            <Text style={styles.radioText}>Non-progressive</Text>
+                            <RadioButton
+                              value="NonProgressive"
+                              color="#2D9F88"
+                            />
+                            <Text style={styles.radioText}>
+                              Non-progressive
+                            </Text>
                           </View>
                           <View style={styles.radioButton}>
                             <RadioButton value="Progressive" color="#2D9F88" />
@@ -663,9 +771,13 @@ const AddPatient: React.FC = () => {
                     <View key={symptom} style={styles.checkboxIndented}>
                       <Checkbox
                         status={
-                          formData.cerebellumSymptoms.includes(symptom) ? "checked" : "unchecked"
+                          formData.cerebellumSymptoms.includes(symptom)
+                            ? "checked"
+                            : "unchecked"
                         }
-                        onPress={() => handleCheckboxChange("cerebellumSymptoms", symptom)}
+                        onPress={() =>
+                          handleCheckboxChange("cerebellumSymptoms", symptom)
+                        }
                         color="#2D9F88"
                       />
                       <Text style={styles.checkboxText}>{symptom}</Text>
@@ -676,7 +788,9 @@ const AddPatient: React.FC = () => {
 
               {formData.symptoms.includes("Cranial nerve dysfunction") && (
                 <>
-                  <Text style={styles.labelIndented}>Cranial nerve dysfunction:</Text>
+                  <Text style={styles.labelIndented}>
+                    Cranial nerve dysfunction:
+                  </Text>
                   {[
                     "Hyposmia",
                     "Blurring of vision",
@@ -693,9 +807,13 @@ const AddPatient: React.FC = () => {
                     <View key={symptom} style={styles.checkboxIndented}>
                       <Checkbox
                         status={
-                          formData.cranialNerveSymptoms.includes(symptom) ? "checked" : "unchecked"
+                          formData.cranialNerveSymptoms.includes(symptom)
+                            ? "checked"
+                            : "unchecked"
                         }
-                        onPress={() => handleCheckboxChange("cranialNerveSymptoms", symptom)}
+                        onPress={() =>
+                          handleCheckboxChange("cranialNerveSymptoms", symptom)
+                        }
                         color="#2D9F88"
                       />
                       <Text style={styles.checkboxText}>{symptom}</Text>
@@ -711,9 +829,10 @@ const AddPatient: React.FC = () => {
             <>
               <Text style={styles.sectionTitle}>Medication History</Text>
               <Text style={styles.label}>
-                Is the patient on any drugs or has taken these drugs in the recent past?
+                Is the patient on any drugs or has taken these drugs in the
+                recent past?
               </Text>
-              
+
               <Text style={styles.categoryLabel}>Antiepileptics:</Text>
               {[
                 "Carbamazepine",
@@ -727,7 +846,9 @@ const AddPatient: React.FC = () => {
                 <View key={drug} style={styles.checkboxContainer}>
                   <Checkbox
                     status={
-                      formData.antiepileptics.includes(drug) ? "checked" : "unchecked"
+                      formData.antiepileptics.includes(drug)
+                        ? "checked"
+                        : "unchecked"
                     }
                     onPress={() => handleCheckboxChange("antiepileptics", drug)}
                     color="#2D9F88"
@@ -735,7 +856,7 @@ const AddPatient: React.FC = () => {
                   <Text style={styles.checkboxText}>{drug}</Text>
                 </View>
               ))}
-              
+
               <Text style={styles.categoryLabel}>Antipsychotics:</Text>
               {[
                 "Chlorpromazine",
@@ -749,7 +870,9 @@ const AddPatient: React.FC = () => {
                 <View key={drug} style={styles.checkboxContainer}>
                   <Checkbox
                     status={
-                      formData.antipsychotics.includes(drug) ? "checked" : "unchecked"
+                      formData.antipsychotics.includes(drug)
+                        ? "checked"
+                        : "unchecked"
                     }
                     onPress={() => handleCheckboxChange("antipsychotics", drug)}
                     color="#2D9F88"
@@ -757,7 +880,7 @@ const AddPatient: React.FC = () => {
                   <Text style={styles.checkboxText}>{drug}</Text>
                 </View>
               ))}
-              
+
               <Text style={styles.categoryLabel}>Ototoxic Drugs:</Text>
               {[
                 "Cisplatin",
@@ -772,7 +895,9 @@ const AddPatient: React.FC = () => {
                 <View key={drug} style={styles.checkboxContainer}>
                   <Checkbox
                     status={
-                      formData.ototoxicDrugs.includes(drug) ? "checked" : "unchecked"
+                      formData.ototoxicDrugs.includes(drug)
+                        ? "checked"
+                        : "unchecked"
                     }
                     onPress={() => handleCheckboxChange("ototoxicDrugs", drug)}
                     color="#2D9F88"
@@ -788,9 +913,10 @@ const AddPatient: React.FC = () => {
             <>
               <Text style={styles.sectionTitle}>Treatment History</Text>
               <Text style={styles.label}>
-                Has the patient taken any medications following onset of vertigo?
+                Has the patient taken any medications following onset of
+                vertigo?
               </Text>
-              
+
               {[
                 "Benzodiazepines",
                 "Labyrinthine sedatives (Cinnarizine, Meclizine, Prochlorperazine, etc)",
@@ -800,9 +926,13 @@ const AddPatient: React.FC = () => {
                 <View key={medication} style={styles.checkboxContainer}>
                   <Checkbox
                     status={
-                      formData.medicationsTaken.includes(medication) ? "checked" : "unchecked"
+                      formData.medicationsTaken.includes(medication)
+                        ? "checked"
+                        : "unchecked"
                     }
-                    onPress={() => handleCheckboxChange("medicationsTaken", medication)}
+                    onPress={() =>
+                      handleCheckboxChange("medicationsTaken", medication)
+                    }
                     color="#2D9F88"
                   />
                   <Text style={styles.checkboxText}>{medication}</Text>
@@ -815,26 +945,17 @@ const AddPatient: React.FC = () => {
         {/* Navigation Buttons */}
         <View style={styles.buttonContainer}>
           {step > 1 && (
-            <TouchableOpacity
-              style={styles.navButton}
-              onPress={prevStep}
-            >
+            <TouchableOpacity style={styles.navButton} onPress={prevStep}>
               <Text style={styles.buttonText}>Previous</Text>
             </TouchableOpacity>
           )}
-          
+
           {step < totalSteps ? (
-            <TouchableOpacity
-              style={styles.mainButton}
-              onPress={nextStep}
-            >
+            <TouchableOpacity style={styles.mainButton} onPress={nextStep}>
               <Text style={styles.buttonText}>Next</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              style={styles.mainButton}
-              onPress={handleSubmit}
-            >
+            <TouchableOpacity style={styles.mainButton} onPress={handleSubmit}>
               <Text style={styles.buttonText}>Submit</Text>
             </TouchableOpacity>
           )}

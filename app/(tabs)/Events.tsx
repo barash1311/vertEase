@@ -8,12 +8,19 @@ import {
   StyleSheet,
   Alert,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { collection, query, where, getDocs, doc, deleteDoc } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  deleteDoc,
+} from "firebase/firestore";
 import { db } from "@/api/firebaseConfig";
 import { useAuth } from "../../api/AuthContext";
+import { useFocusEffect } from "expo-router"; // Add this import
 
 const Events: React.FC = () => {
   const router = useRouter();
@@ -29,269 +36,170 @@ const Events: React.FC = () => {
     }
   }, [user]);
 
+  // Add this effect to refresh data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.uid) {
+        loadPatients();
+      }
+    }, [user])
+  );
+
   const loadPatients = async () => {
     try {
-      // Get the current user's ID to use as practitionerId
       const userId = user?.uid;
-      
-      if (!userId) {
-        console.log("No user ID found");
-        return;
-      }
-      
-      console.log("Loading patients for practitioner ID:", userId);
-      
-      // Query Firestore for patients with this practitioner ID
-      const q = query(collection(db, "patients"), where("practitionerId", "==", userId));
+      if (!userId) return;
+
+      const q = query(
+        collection(db, "patients"),
+        where("practitionerId", "==", userId)
+      );
       const querySnapshot = await getDocs(q);
-      
-      console.log("Found patients count:", querySnapshot.docs.length);
-      
-      const patientsList = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: data.id || doc.id,
-          name: data.name || "Unknown Name",
-          cause: data.cause || "Unknown cause",
-          firestoreId: doc.id,  // Store the Firebase document ID for deletion
-        };
-      });
-      
-      // Update state with the fetched patients
+
+      const patientsList = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        firestoreId: doc.id,
+        ...doc.data(),
+        name: doc.data().name || "Unknown",
+        cause: doc.data().cause || "Not specified",
+      }));
+
       setPatients(patientsList);
-      
-      // Also update AsyncStorage for offline access
-      await AsyncStorage.setItem('patients', JSON.stringify(patientsList));
     } catch (error) {
-      console.error("Error loading patients from Firestore:", error);
-      
-      // Fall back to AsyncStorage if Firestore fails
-      try {
-        const storedPatientsString = await AsyncStorage.getItem("patients");
-        if (storedPatientsString) {
-          setPatients(JSON.parse(storedPatientsString));
-        }
-      } catch (storageError) {
-        console.error("Failed to load patients from AsyncStorage:", storageError);
-      }
+      console.error("Error loading patients:", error);
+      Alert.alert("Error", "Failed to load patients");
     }
   };
 
-  // Update the deletePatient function to trigger a refresh
   const deletePatient = async (id: string, firestoreId?: string) => {
     Alert.alert(
       "Delete Patient",
       "Are you sure you want to delete this patient?",
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
+        { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
+          style: "destructive",
           onPress: async () => {
-            try {
-              // Delete from Firestore first
-              if (firestoreId) {
+            if (firestoreId) {
+              try {
                 await deleteDoc(doc(db, "patients", firestoreId));
-                console.log("Patient deleted from Firestore:", firestoreId);
-              } else {
-                console.warn("No Firestore ID available for deletion");
+                setPatients(patients.filter((patient) => patient.id !== id));
+              } catch (error) {
+                console.error("Error deleting patient:", error);
+                Alert.alert("Error", "Failed to delete patient");
               }
-              
-              // Update local state and AsyncStorage
-              const updatedPatients = patients.filter(
-                (patient) => patient.id !== id
-              );
-              setPatients(updatedPatients);
-              await AsyncStorage.setItem(
-                "patients",
-                JSON.stringify(updatedPatients)
-              );
-              
-              // Also delete the detailed patient data from AsyncStorage
-              await AsyncStorage.removeItem(`patient-${id}`);
-              
-              // Set a flag to indicate data change for other screens to detect
-              await AsyncStorage.setItem('patientsLastUpdated', new Date().toISOString());
-              
-              Alert.alert("Success", "Patient deleted successfully");
-            } catch (error) {
-              console.error("Error deleting patient:", error);
-              Alert.alert("Error", "Failed to delete patient. Please try again.");
             }
           },
-          style: "destructive",
         },
       ]
     );
   };
 
-  const goToAddPatient = () => {
-    if (user?.uid) {
-      // Store the current user ID as practitionerId for consistency
-      AsyncStorage.setItem('practitionerId', user.uid).then(() => {
-        router.push("/AddPatient");
-      });
-    } else {
-      Alert.alert("Error", "You must be logged in to add patients");
-    }
-  };
-
-  const filteredPatients = patients.filter((patient) =>
-    patient.name.toLowerCase().includes(searchText.toLowerCase())
+  const renderItem = ({ item }: { item: any }) => (
+    <View style={styles.patientCard}>
+      <View style={styles.cardContent}>
+        <Text style={styles.patientName}>{item.name}</Text>
+        <Text style={styles.patientCause}>{item.cause}</Text>
+      </View>
+      <View style={styles.actionButtons}>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() =>
+            router.push({
+              pathname: "/AddPatient",
+              params: {
+                patientId: item.firestoreId,
+                isEditing: true,
+              },
+            })
+          }
+        >
+          <Ionicons name="create-outline" size={24} color="#ffffff" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => deletePatient(item.id, item.firestoreId)}
+        >
+          <Ionicons name="trash-outline" size={24} color="#ffffff" />
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Patients List</Text>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search"
-          size={20}
-          color="#888"
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search patient..."
-          placeholderTextColor="#888"
-          value={searchText}
-          onChangeText={setSearchText}
-        />
-      </View>
-
-      {/* Patient List */}
-      {patients.length > 0 ? (
-        <FlatList
-          data={filteredPatients}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.patientCard}
-              onPress={() => router.push(`/PatientDetail/${item.id}`)}
-            >
-              <View style={styles.cardContent}>
-                <Text style={styles.patientName}>{item.name}</Text>
-                <Text style={styles.patientCause}>Cause: {item.cause}</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent triggering the parent onPress
-                  deletePatient(item.id, item.firestoreId);
-                }}
-              >
-                <Ionicons name="trash" size={22} color="white" />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          )}
-        />
-      ) : (
-        <View style={styles.emptyState}>
-          <Ionicons name="person-outline" size={60} color="#ccc" />
-          <Text style={styles.emptyText}>No patients found</Text>
-          <Text style={styles.emptySubtext}>Add a new patient to get started</Text>
-        </View>
-      )}
-
-      {/* Bottom Navigation Bar */}
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={goToAddPatient}
-      >
-        <Text style={styles.addButtonText}>+ Add Patient</Text>
-      </TouchableOpacity>
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search patients..."
+        value={searchText}
+        onChangeText={setSearchText}
+      />
+      <FlatList
+        data={patients.filter((patient) =>
+          patient.name.toLowerCase().includes(searchText.toLowerCase())
+        )}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+      />
     </View>
   );
 };
 
-// Add to Styles
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#E5E5E5" },
-  title: {
-    fontSize: 26,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 20,
-    color: "#00856F",
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    backgroundColor: "white",
-    borderColor: "#00856F",
-    marginBottom: 15,
-  },
-  searchIcon: {
-    marginRight: 5,
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: "#f5f5f5",
   },
   searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: 16,
+    height: 40,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    marginBottom: 16,
+    backgroundColor: "#fff",
   },
   patientCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 18,
-    backgroundColor: "#F7F9FC",
-    borderRadius: 12,
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 8,
     marginBottom: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    elevation: 2,
     shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
+    shadowRadius: 4,
   },
   cardContent: {
     flex: 1,
   },
-  patientName: { fontSize: 20, fontWeight: "bold", color: "#429D7E" },
-  patientCause: { fontSize: 16, color: "#429D7E" },
-  deleteButton: {
-    backgroundColor: "#D90429",
-    padding: 10,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  addButton: {
-    backgroundColor: "#429D7E",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 15,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  addButtonText: {
-    fontSize: 22,
-    color: "white",
-    fontWeight: "bold",
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  emptyText: {
+  patientName: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#666",
-    marginTop: 10,
+    marginBottom: 4,
   },
-  emptySubtext: {
-    fontSize: 16,
-    color: "#888",
-    marginTop: 5,
+  patientCause: {
+    fontSize: 14,
+    color: "#666",
+  },
+  actionButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  editButton: {
+    backgroundColor: "#429D7E",
+    padding: 8,
+    borderRadius: 8,
+  },
+  deleteButton: {
+    backgroundColor: "#ff4444",
+    padding: 8,
+    borderRadius: 8,
   },
 });
 
