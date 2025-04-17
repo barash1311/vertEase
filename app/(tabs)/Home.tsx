@@ -17,6 +17,7 @@ import { useAuth } from "../../api/AuthContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/api/firebaseConfig";
+import { useIsFocused } from '@react-navigation/native';
 
 const DEFAULT_PROFILE_IMAGE = require("../../assets/images/favicon.png");
 
@@ -73,6 +74,7 @@ const HomePage: React.FC = () => {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<string>("");
+  const isFocused = useIsFocused();
   
   // Check for updates when the component gets focus
   useEffect(() => {
@@ -138,6 +140,13 @@ const HomePage: React.FC = () => {
     }
   }, [user]);
 
+  // Add this effect to update the profile image when the component gains focus
+  useEffect(() => {
+    if (isFocused && user?.photoURL) {
+      setProfileImage(user.photoURL);
+    }
+  }, [isFocused, user?.photoURL]);
+
   // Update the loadPatients function
   const loadPatients = async () => {
     try {
@@ -187,22 +196,54 @@ const HomePage: React.FC = () => {
     }
   };
 
+  // Replace the pickImage function with this one to update auth profile
   const pickImage = useCallback(async () => {
+    if (!user?.uid) {
+      Alert.alert("Error", "You must be logged in to update your profile picture");
+      return;
+    }
+
     try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert("Permission Required", "Please allow access to your photo library.");
+        return;
+      }
+      
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [4, 3],
-        quality: 1,
+        aspect: [1, 1],
+        quality: 0.7,
       });
 
       if (!result.canceled) {
-        setProfileImage(result.assets[0].uri);
+        setIsLoading(true);
+        try {
+          const uri = result.assets[0].uri;
+          
+          // Use the utility function
+          const downloadURL = await uploadImageToFirebase(uri, user.uid);
+          
+          // Update the user's profile
+          await updateUserProfile(undefined, downloadURL);
+          
+          // Update local state
+          setProfileImage(downloadURL);
+          
+          Alert.alert("Success", "Profile picture updated successfully!");
+        } catch (error) {
+          console.error("Error updating profile image:", error);
+          Alert.alert("Error", "Failed to update profile picture. Please try again.");
+        } finally {
+          setIsLoading(false);
+        }
       }
     } catch (error) {
       console.error("Error picking image:", error);
     }
-  }, []);
+  }, [user]);
 
   // Update the goToAddPatient function
   const goToAddPatient = () => {
@@ -307,7 +348,13 @@ const HomePage: React.FC = () => {
         </View>
         <TouchableOpacity onPress={pickImage}>
           <Image
-            source={profileImage ? { uri: profileImage } : DEFAULT_PROFILE_IMAGE}
+            source={
+              user?.photoURL 
+                ? { uri: user.photoURL } 
+                : profileImage 
+                  ? { uri: profileImage }
+                  : DEFAULT_PROFILE_IMAGE
+            }
             style={styles.profileImage}
           />
         </TouchableOpacity>

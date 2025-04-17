@@ -6,6 +6,7 @@ import { db } from "../../api/firebaseConfig";
 import * as ImagePicker from "expo-image-picker";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "expo-router";
+import { uploadImageToFirebase } from "../../utils/imageUpload";
 
 const Profile: React.FC = () => {
   const { user, logout, updateUserProfile } = useAuth();
@@ -79,22 +80,14 @@ const Profile: React.FC = () => {
         quality: 0.7,
       });
       
-      if (!result.canceled) {
+      if (!result.canceled && user?.uid) {
         setIsLoading(true);
         
         try {
-          // Upload image to Firebase Storage
           const uri = result.assets[0].uri;
-          const response = await fetch(uri);
-          const blob = await response.blob();
           
-          const storage = getStorage();
-          const fileExtension = uri.split('.').pop();
-          const fileName = `profile_${user?.uid}_${Date.now()}.${fileExtension}`;
-          const storageRef = ref(storage, `profileImages/${fileName}`);
-          
-          await uploadBytes(storageRef, blob);
-          const downloadURL = await getDownloadURL(storageRef);
+          // Use the utility function
+          const downloadURL = await uploadImageToFirebase(uri, user.uid);
           
           // Update user profile
           await updateUserProfile(undefined, downloadURL);

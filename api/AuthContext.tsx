@@ -8,9 +8,11 @@ import {
   updateProfile,
   User as FirebaseUser,
 } from "firebase/auth";
-import { doc, setDoc, getDoc, collection } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, updateDoc } from "firebase/firestore";
 import { auth, db } from "./firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getStorage, ref } from "firebase/storage";
+import { uploadImageToFirebase, deleteOldProfileImage } from "../utils/imageUpload";
 
 // Define user role type
 export type UserRole = "patient" | "practitioner";
@@ -124,14 +126,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const newUser = userCredential.user;
       console.log("User created in Firebase Auth:", newUser.uid);
 
-      // Update user profile with display name and photo URL
       await updateProfile(newUser, {
         displayName: fullName,
         photoURL: profileImageURL || null,
       });
       console.log("Profile updated with name and photo");
 
-      // CRITICAL: Store user role in Firestore - this is where we ensure the role is set
       const userRef = doc(db, "users", newUser.uid);
       const userData = {
         uid: newUser.uid,
@@ -187,6 +187,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setUser(userWithRole);
       
       console.log(`Account created successfully as ${role}`);
+
+      // After user creation in your signUp function
+      const user = userCredential.user;
+      if (profileImageURL) {
+        try {
+          // Move the temporary image to a permanent location with the user ID
+          const storage = getStorage();
+          const tempImageRef = ref(storage, profileImageURL);
+          const newImageRef = ref(storage, `profileImages/${user.uid}/profile_main.${profileImageURL.split('.').pop()}`);
+          
+          // You could copy the image to the new location if needed
+          // This is just a suggestion for how to organize by user ID
+        } catch (imageError) {
+          console.error("Error organizing profile image:", imageError);
+          // Still continue with account creation
+        }
+      }
     } catch (error: any) {
       console.error("Signup error:", error);
       // Handle errors...
@@ -264,42 +281,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // Update user profile function
-  const updateUserProfile = async (displayName?: string, photoURL?: string) => {
+  const updateUserProfile = async (displayName?: string, photoURL?: string): Promise<void> => {
+    if (!auth.currentUser) {
+      throw new Error("No user logged in");
+    }
+    
     try {
-      if (!auth.currentUser) {
-        throw new Error("No authenticated user.");
-      }
-
-      const updateData: {
-        displayName?: string;
-        photoURL?: string;
-      } = {};
-
+      const updateData: any = {};
       if (displayName) updateData.displayName = displayName;
-      if (photoURL) updateData.photoURL = photoURL;
-
+      
+      if (photoURL) {
+        // Delete old profile image if it exists and contains the user's ID
+        if (user?.photoURL && user.uid) {
+          await deleteOldProfileImage(user.uid, user.photoURL);
+        }
+        updateData.photoURL = photoURL;
+      }
+      
       await updateProfile(auth.currentUser, updateData);
-
+      
       // Update Firestore user document
-      const userRef = doc(db, "users", auth.currentUser.uid);
-      await setDoc(userRef, updateData, { merge: true });
-
-      // Also update in role-specific collection
-      if (user?.role) {
-        const roleRef = doc(db, `${user.role}s`, auth.currentUser.uid);
-        await setDoc(roleRef, updateData, { merge: true });
-      }
-
-      // Update local user state
-      if (user) {
-        setUser({
-          ...user,
-          displayName: displayName || user.displayName,
-          photoURL: photoURL || user.photoURL,
-        });
-      }
-    } catch (error: any) {
-      throw new Error(`Profile update failed: ${error.message}`);
+      const userDocRef = doc(db, "users", auth.currentUser.uid);
+      await updateDoc(userDocRef, updateData);
+      
+      // Update local state
+      setUser(prev => prev ? { ...prev, ...updateData } : null);
+      
+      console.log("User profile updated successfully");
+    } catch (error) {
+      console.error("Error updating user profile:", error);
+      throw error;
     }
   };
 

@@ -19,6 +19,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import Button from "../../components/shared/Button";
 import { useAuth, UserRole } from "../../api/AuthContext";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { uploadImageToFirebase } from "../../utils/imageUpload";
 
 export default function SignUp() {
   const router = useRouter();
@@ -81,21 +82,15 @@ export default function SignUp() {
     if (!imageFile) return "";
     
     try {
-      // Convert image to blob
       const response = await fetch(uri);
       const blob = await response.blob();
-      
-      // Create unique filename
       const fileExtension = uri.split('.').pop();
-      const fileName = `profile_${Date.now()}.${fileExtension}`;
-      
-      // Upload to Firebase Storage
       const storage = getStorage();
+      const tempId = Date.now().toString();
+      const fileName = `profile_${tempId}.${fileExtension}`;
       const storageRef = ref(storage, `profileImages/${fileName}`);
       
       await uploadBytes(storageRef, blob);
-      
-      // Get download URL
       const downloadURL = await getDownloadURL(storageRef);
       return downloadURL;
     } catch (error) {
@@ -111,15 +106,14 @@ export default function SignUp() {
     console.log(`Starting signup process for ${userRole} role`);
     
     try {
+      const userCredential = await signUp(email, password, fullName, userRole, "");
       let imageUrl = "";
-      if (profileImage) {
-        imageUrl = await uploadImage(profileImage);
+      if (profileImage && userCredential?.user?.uid) {
+        imageUrl = await uploadImageToFirebase(profileImage, userCredential.user.uid);
+        await updateProfile(userCredential.user, { photoURL: imageUrl });
+        const userRef = doc(db, "users", userCredential.user.uid);
+        await updateDoc(userRef, { photoURL: imageUrl });
       }
-      
-      // Explicitly log the role being used for signup
-      console.log(`Creating user with role: ${userRole}`);
-      
-      await signUp(email, password, fullName, userRole, imageUrl);
       
       Alert.alert(
         "Account Created",
