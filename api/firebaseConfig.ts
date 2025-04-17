@@ -5,14 +5,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Your Firebase configuration from the Firebase Console
 const firebaseConfig = {
-    apiKey: "AIzaSyCw1QqfUJmduK9aDnwEsMF-4ut0vTfs_Gw",
-    authDomain: "vertigo-70778.firebaseapp.com",
-    projectId: "vertigo-70778",
-    storageBucket: "vertigo-70778.firebasestorage.app",
-    messagingSenderId: "244173815393",
-    appId: "1:244173815393:web:d954bd4ab16b1d2050b420",
-    measurementId: "G-JJM9VQE1PV"
-};
+    apiKey: "AIzaSyDKVQ-3S48-PNhPQVWdEoOaCBI4qbPdddA",
+    authDomain: "inkrit-3ebcf.firebaseapp.com",
+    databaseURL: "https://inkrit-3ebcf-default-rtdb.firebaseio.com",
+    projectId: "inkrit-3ebcf",
+    storageBucket: "inkrit-3ebcf.appspot.com",
+    messagingSenderId: "440105175644",
+    appId: "1:440105175644:web:d2c8a63530207a38e67499",
+    measurementId: "G-5S36EFQKVM"
+  };
 
 // Initialize Firebase app
 const app = initializeApp(firebaseConfig);
